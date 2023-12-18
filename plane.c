@@ -4,6 +4,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include "private.h"
+#include <drm_fourcc.h>
 
 static int
 guess_plane_zpos_from_type(struct liftoff_device *device, uint32_t plane_id,
@@ -301,6 +302,7 @@ plane_check_layer_fb(struct liftoff_plane *plane, struct liftoff_layer *layer)
 	size_t i;
 	ssize_t format_index, modifier_index;
 	int format_shift;
+	uint64_t layer_modifier;
 
 	/* TODO: add support for legacy format list with implicit modifier */
 	if (layer->fb_info.fb_id == 0 ||
@@ -320,18 +322,31 @@ plane_check_layer_fb(struct liftoff_plane *plane, struct liftoff_layer *layer)
 		}
 	}
 	if (format_index < 0) {
+		liftoff_log(
+			LIFTOFF_DEBUG,
+			"Rejecting allocation of plane %"PRIu32" to layer %p because format unsupported",
+			plane->id, (void*)layer);
 		return false;
 	}
+
+	layer_modifier =
+		fourcc_mod_is_vendor(layer->fb_info.modifier, BROADCOM)
+		? fourcc_mod_broadcom_mod(layer->fb_info.modifier)
+		: layer->fb_info.modifier;
 
 	modifiers = (void *)((char *)set + set->modifiers_offset);
 	modifier_index = -1;
 	for (i = 0; i < set->count_modifiers; i++) {
-		if (modifiers[i].modifier == layer->fb_info.modifier) {
+		if (modifiers[i].modifier == layer_modifier) {
 			modifier_index = (ssize_t)i;
 			break;
 		}
 	}
 	if (modifier_index < 0) {
+		liftoff_log(
+			LIFTOFF_DEBUG,
+			"Rejecting allocation of plane %"PRIu32" to layer %p because modifier unsupported",
+			plane->id, (void*)layer);
 		return false;
 	}
 

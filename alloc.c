@@ -427,6 +427,7 @@ output_choose_layers(struct liftoff_output *output, struct alloc_result *result,
 	struct liftoff_layer *layer;
 	int cursor, ret;
 	size_t remaining_planes;
+	const char* plane_type_str;
 	struct alloc_step next_step = {0};
 
 	device = output->device;
@@ -453,21 +454,45 @@ output_choose_layers(struct liftoff_output *output, struct alloc_result *result,
 		 * find a better allocation. Give up. */
 		/* TODO: change remaining_planes to only count those whose
 		 * possible CRTC match and which aren't allocated */
+        liftoff_log(LIFTOFF_DEBUG,
+                    "%sEarly-exit because %d is the best possible score",
+                    step->log_prefix, result->best_score);
 		return 0;
-	}
+	} else {
+        liftoff_log(LIFTOFF_DEBUG,
+                    "%sCurrent score is %d, best possible is %d, so soldiering on...",
+                    step->log_prefix, result->best_score, step->score + (int)remaining_planes);
+    }
 
 	cursor = drmModeAtomicGetCursor(result->req);
 
 	if (plane->layer != NULL) {
+		liftoff_log(LIFTOFF_DEBUG, "%sSkipping because plane already allocated", step->log_prefix);
 		goto skip;
 	}
 	if ((plane->possible_crtcs & (1 << output->crtc_index)) == 0) {
+		liftoff_log(LIFTOFF_DEBUG, "%sSkipping because plane CRTCs not compatible with output CRTCs", step->log_prefix);
 		goto skip;
 	}
 
+	switch (plane->type) {
+		case DRM_PLANE_TYPE_PRIMARY:
+			plane_type_str = "PRIMARY";
+			break;
+		case DRM_PLANE_TYPE_OVERLAY:
+			plane_type_str = "OVERLAY";
+			break;
+		case DRM_PLANE_TYPE_CURSOR:
+			plane_type_str = "CURSOR";
+			break;
+		default:
+			plane_type_str = "UNKNOWN";
+	}
+
 	liftoff_log(LIFTOFF_DEBUG,
-		    "%sPerforming allocation for plane %"PRIu32" (%zu/%zu)",
-		    step->log_prefix, plane->id, step->plane_idx + 1, result->planes_len);
+		    "%sPerforming allocation for plane %"PRIu32" (%zu/%zu) %s",
+		    step->log_prefix, plane->id, step->plane_idx + 1, result->planes_len,
+			plane_type_str);
 
 	liftoff_list_for_each(layer, &output->layers, link) {
 		if (layer->plane != NULL) {
@@ -510,6 +535,7 @@ output_choose_layers(struct liftoff_output *output, struct alloc_result *result,
 			continue;
 		}
 
+		liftoff_log(LIFTOFF_DEBUG, "%s Doing test commit...", step->log_prefix);
 		ret = device_test_commit(device, result->req, result->flags);
 		if (ret == 0) {
 			liftoff_log(LIFTOFF_DEBUG,
@@ -893,8 +919,10 @@ liftoff_output_apply(struct liftoff_output *output, drmModeAtomicReq *req,
 			continue;
 		}
 
-		liftoff_log(LIFTOFF_DEBUG, "  Layer %p -> plane %"PRIu32,
-			    (void *)layer, plane->id);
+		liftoff_log(LIFTOFF_DEBUG, "  Layer %p%s -> plane %"PRIu32,
+			    (void *)layer,
+				layer->force_composition ? " (composition)" : "",
+				plane->id);
 
 		assert(plane->layer == NULL);
 		assert(layer->plane == NULL);

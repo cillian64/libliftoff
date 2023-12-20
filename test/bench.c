@@ -12,7 +12,7 @@
 #define MAX_LAYERS 128
 
 static struct liftoff_layer *
-add_layer(struct liftoff_output *output, int x, int y, uint32_t width, uint32_t height)
+add_layer(struct liftoff_output *output, int x, int y, uint32_t width, uint32_t height, bool composition)
 {
 	uint32_t fb_id;
 	struct liftoff_layer *layer;
@@ -29,6 +29,10 @@ add_layer(struct liftoff_output *output, int x, int y, uint32_t width, uint32_t 
 	liftoff_layer_set_property(layer, "SRC_W", (uint64_t)width << 16);
 	liftoff_layer_set_property(layer, "SRC_H", (uint64_t)height << 16);
 
+	if (composition) {
+		liftoff_output_set_composition_layer(output, layer);
+	}
+
 	return layer;
 }
 
@@ -37,6 +41,7 @@ main(int argc, char *argv[])
 {
 	int opt;
 	size_t planes_len, layers_len;
+	bool composition, debug;
 	struct timespec start, end;
 	struct liftoff_mock_plane *mock_planes[MAX_PLANES];
 	size_t i, j;
@@ -51,7 +56,9 @@ main(int argc, char *argv[])
 
 	planes_len = 5;
 	layers_len = 10;
-	while ((opt = getopt(argc, argv, "p:l:")) != -1) {
+	debug = false;
+	composition = false;
+	while ((opt = getopt(argc, argv, "p:l:cd")) != -1) {
 		switch (opt) {
 		case 'p':
 			planes_len = (size_t)atoi(optarg);
@@ -59,14 +66,21 @@ main(int argc, char *argv[])
 		case 'l':
 			layers_len = (size_t)atoi(optarg);
 			break;
+		case 'c':
+			composition = true;
+			break;
+		case 'd':
+			debug = true;
+			break;
 		default:
-			fprintf(stderr, "usage: %s [-p planes] [-l layers]\n",
-				argv[0]);
+			fprintf(stderr, "usage: %s [-p planes] [-l layers] [-c] [-d]\n", argv[0]);
+			fprintf(stderr, "-c adds a composition layer\n");
+			fprintf(stderr, "-d enables libliftoff debug logging\n");
 			exit(EXIT_FAILURE);
 		}
 	}
 
-	liftoff_log_set_priority(LIFTOFF_SILENT);
+	liftoff_log_set_priority(debug ? LIFTOFF_DEBUG : LIFTOFF_SILENT);
 
 	for (i = 0; i < planes_len; i++) {
 		plane_type = i == 0 ? DRM_PLANE_TYPE_PRIMARY :
@@ -85,7 +99,8 @@ main(int argc, char *argv[])
 	for (i = 0; i < layers_len; i++) {
 		/* Planes don't intersect, so the library can arrange them in
 		 * any order. Testing all combinations takes more time. */
-		layers[i] = add_layer(output, (int)i * 100, (int)i * 100, 100, 100);
+		layers[i] = add_layer(output, (int)i * 100, (int)i * 100, 100, 100, composition && i == 0);
+
 		for (j = 0; j < planes_len; j++) {
 			if (j == 1) {
 				/* Make the lowest plane above the primary plane

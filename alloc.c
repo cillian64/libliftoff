@@ -116,6 +116,8 @@ check_deadline(struct timespec start)
 	struct timespec now;
 	int64_t deadline;
 
+	return true; // XXX
+
 	if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
 		liftoff_log_errno(LIFTOFF_ERROR, "clock_gettime");
 		return false;

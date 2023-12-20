@@ -102,14 +102,14 @@ main(int argc, char *argv[])
 		layers[i] = add_layer(output, (int)i * 100, (int)i * 100, 100, 100, composition && i == 0);
 
 		for (j = 0; j < planes_len; j++) {
-			if (j == 1) {
-				/* Make the lowest plane above the primary plane
-				 * incompatible with all layers. A solution
-				 * using all planes won't be reached, so the
-				 * library will keep trying more combinations.
-				 */
-				continue;
-			}
+			// if (j == 1) {
+			// 	/* Make the lowest plane above the primary plane
+			// 	 * incompatible with all layers. A solution
+			// 	 * using all planes won't be reached, so the
+			// 	 * library will keep trying more combinations.
+			// 	 */
+			// 	continue;
+			// }
 			liftoff_mock_plane_add_compatible_layer(mock_planes[j],
 								layers[i]);
 		}

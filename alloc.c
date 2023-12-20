@@ -426,17 +426,91 @@ check_alloc_valid(struct liftoff_output *output, struct alloc_result *result,
 	return true;
 }
 
+static int liftoff_min(int a, int b) {
+	return a < b ? a : b;
+}
+
 static int
 calculate_best_possible_score(struct liftoff_output *output,
 			 struct alloc_result *result, struct alloc_step *step)
 {
+	struct liftoff_layer *layer;
 	int remaining_planes;
+	int remaining_layers;
+	int remaining_allocations;
+	int total_planes;
+	int total_layers;
+	int possible_allocations;
+	int best_possible_score;
 
 	/* TODO: change remaining_planes to only count those whose
 	 * possible CRTC match and which aren't allocated */
 	remaining_planes = result->planes_len - step->plane_idx;
 
-	return step->score + (int)remaining_planes; // TODO
+	/* Count number of unallocated non-composition layers */
+	remaining_layers = 0;
+	liftoff_list_for_each(layer, &output->layers, link) {
+		if (layer->plane != NULL) {
+			/* Layer is already allocated */
+			continue;
+		}
+		/* Skip this layer if already allocated */
+		if (is_layer_allocated(step, layer)) {
+			continue;
+		}
+		if (!layer_is_visible(layer)) {
+			/* Ignore invisible layers, they won't be allocated */
+			continue;
+		}
+		if (layer == output->composition_layer) {
+			/* Ignore composition layer, it is not included in the score */
+			continue;
+		}
+		remaining_layers++;
+	}
+
+	/* Remaining possible allocations is the lesser of remaining planes
+	 * and layers */
+	remaining_allocations = liftoff_min(remaining_layers, remaining_planes);
+
+	/* Now calculate the best possible score overall, ignoring our
+	 * current position. */
+	total_planes = result->planes_len;
+	total_layers = 0;
+	liftoff_list_for_each(layer, &output->layers, link) {
+		if (!layer_is_visible(layer)) {
+			/* Ignore invisible layers, they won't be allocated */
+			continue;
+		}
+		if (layer == output->composition_layer) {
+			/* Ignore composition layer, it is not included in the score */
+			continue;
+		}
+		total_layers++;
+	}
+	possible_allocations = liftoff_min(total_planes, total_layers);
+
+	best_possible_score = liftoff_min(step->score + remaining_allocations,
+									  possible_allocations);
+
+	liftoff_log(LIFTOFF_DEBUG, "%sCalculated best possible score of %d",
+				step->log_prefix, best_possible_score);
+	liftoff_log(LIFTOFF_DEBUG, "%s  Current score: %d",
+				step->log_prefix, step->score);
+	liftoff_log(LIFTOFF_DEBUG, "%s  Remaining planes: %d",
+				step->log_prefix, remaining_planes);
+	liftoff_log(LIFTOFF_DEBUG, "%s  Remaining layers: %d",
+				step->log_prefix, remaining_layers);
+	liftoff_log(LIFTOFF_DEBUG, "%s  Remaining allocations: %d",
+				step->log_prefix, remaining_allocations);
+	liftoff_log(LIFTOFF_DEBUG, "%s  Total planes: %d",
+				step->log_prefix, total_planes);
+	liftoff_log(LIFTOFF_DEBUG, "%s  Total layers: %d",
+				step->log_prefix, total_layers);
+	liftoff_log(LIFTOFF_DEBUG, "%s  Possible allocations: %d",
+				step->log_prefix, possible_allocations);
+
+	return best_possible_score;
 }
 
 static int

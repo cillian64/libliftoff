@@ -427,6 +427,19 @@ check_alloc_valid(struct liftoff_output *output, struct alloc_result *result,
 }
 
 static int
+calculate_best_possible_score(struct liftoff_output *output,
+			 struct alloc_result *result, struct alloc_step *step)
+{
+	int remaining_planes;
+
+	/* TODO: change remaining_planes to only count those whose
+	 * possible CRTC match and which aren't allocated */
+	remaining_planes = result->planes_len - step->plane_idx;
+
+	return step->score + (int)remaining_planes; // TODO
+}
+
+static int
 output_choose_layers(struct liftoff_output *output, struct alloc_result *result,
 		     struct alloc_step *step)
 {
@@ -434,7 +447,7 @@ output_choose_layers(struct liftoff_output *output, struct alloc_result *result,
 	struct liftoff_plane *plane;
 	struct liftoff_layer *layer;
 	int cursor, ret;
-	size_t remaining_planes;
+	int best_possible_score;
 	const char* plane_type_str;
 	struct alloc_step next_step = {0};
 
@@ -466,12 +479,10 @@ output_choose_layers(struct liftoff_output *output, struct alloc_result *result,
 
 	plane = liftoff_container_of(step->plane_link, plane, link);
 
-	remaining_planes = result->planes_len - step->plane_idx;
-	if (result->best_score >= step->score + (int)remaining_planes) {
+	best_possible_score = calculate_best_possible_score(output, result, step);
+	if (result->best_score >= best_possible_score) {
 		/* Even if we find a layer for all remaining planes, we won't
 		 * find a better allocation. Give up. */
-		/* TODO: change remaining_planes to only count those whose
-		 * possible CRTC match and which aren't allocated */
         liftoff_log(LIFTOFF_DEBUG,
                     "%sEarly-exit because %d is the best possible score",
                     step->log_prefix, result->best_score);
@@ -479,7 +490,7 @@ output_choose_layers(struct liftoff_output *output, struct alloc_result *result,
 	} else {
         liftoff_log(LIFTOFF_DEBUG,
                     "%sCurrent score is %d, best possible is %d, so soldiering on...",
-                    step->log_prefix, result->best_score, step->score + (int)remaining_planes);
+                    step->log_prefix, result->best_score, best_possible_score);
     }
 
 	cursor = drmModeAtomicGetCursor(result->req);

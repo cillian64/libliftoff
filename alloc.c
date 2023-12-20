@@ -83,6 +83,13 @@ struct alloc_result {
 	/* per-output */
 	bool has_composition_layer;
 	size_t non_composition_layers_len;
+
+	/* Set if we find an allocation where every layer is allocated to a plane
+	without composition, but the allocation is rejected	because we have
+	allocated a composition layer.  In this case we will backtrack in order to
+	skip everything under the branch where the composition layer was
+	allocated. */
+	bool fits_without_composition;
 };
 
 /* Transient data, arguments for each step */
@@ -410,6 +417,7 @@ check_alloc_valid(struct liftoff_output *output, struct alloc_result *result,
 		liftoff_log(LIFTOFF_DEBUG,
 			    "%sRefusing to use composition: all layers "
 			    "have been put in a plane", step->log_prefix);
+		result->fits_without_composition = true;
 		return false;
 	}
 
@@ -443,6 +451,16 @@ output_choose_layers(struct liftoff_output *output, struct alloc_result *result,
 			memcpy(result->best, step->alloc,
 			       result->planes_len * sizeof(struct liftoff_layer *));
 		}
+		return 0;
+	}
+
+	/* If we have seen an allocation where every layer fits on a plane, then
+	backtrack out of the whole branch where the composition layer is
+	allocated: we can do better, so this is a waste of time. */
+	if (result->fits_without_composition && step->composited) {
+		liftoff_log(LIFTOFF_DEBUG,
+				    "%sBacktracking because of fits_without_composition",
+					step->log_prefix);
 		return 0;
 	}
 

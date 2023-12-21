@@ -622,6 +622,20 @@ output_choose_layers(struct liftoff_output *output, struct alloc_result *result,
 			break;
 		}
 
+		// If we have already found an allocation with the best possible
+		// score, then stop iterating!
+		// TODO: Will this make things worse by not always allocating the
+		// top-most layers and so not plane-ing things like video or the
+		// active application?
+		if (result->best_score >= best_possible_score) {
+			/* Even if we find a layer for all remaining planes, we won't
+			* find a better allocation. Give up. */
+			liftoff_log(LIFTOFF_DEBUG,
+						"%sBreaking foreach-layer loop because %d is the best possible score",
+						step->log_prefix, result->best_score);
+			break;
+		}
+
 		/* Try to use this layer for the current plane */
 		ret = plane_apply(plane, layer, result->req);
 		if (ret == -EINVAL) {

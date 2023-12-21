@@ -315,10 +315,46 @@ has_allocated_plane_under(struct liftoff_output *output,
 	return false;
 }
 
+/* If there are more (visible, non-composition) layers than planes then we'll
+ * have no choice but to do composition.  We may still end up doing
+ * composition even if this function returns false, but if it's true then we
+ * are guaranteed to do composition. */
+static bool
+must_do_composition(struct liftoff_output *output,
+			 struct alloc_result *result)
+{
+	int num_visible_layers;
+	int num_planes;
+	struct liftoff_layer *layer;
+
+	/* If we don't even have a composition plane then nevermind. */
+	if (!output->composition_layer) {
+		return false;
+	}
+
+	num_planes = result->planes_len;
+	num_visible_layers = 0;
+	liftoff_list_for_each(layer, &output->layers, link) {
+		if (!layer_is_visible(layer)) {
+			/* Ignore invisible layers, they won't be allocated */
+			continue;
+		}
+		if (layer == output->composition_layer) {
+			/* Ignore composition layer, if all the other layers fit then this
+			 * one won't be allocated. */
+			continue;
+		}
+		num_visible_layers++;
+	}
+
+	return num_visible_layers > num_planes;
+}
+
 static bool
 check_layer_plane_compatible(struct alloc_step *step,
 			     struct liftoff_layer *layer,
-			     struct liftoff_plane *plane)
+			     struct liftoff_plane *plane,
+				 struct alloc_result *result)
 {
 	struct liftoff_output *output;
 	struct liftoff_layer_property *zpos_prop;
@@ -388,6 +424,22 @@ check_layer_plane_compatible(struct alloc_step *step,
 			    "cannot put composition layer on "
 			    "non-primary plane",
 			    step->log_prefix, (void *)layer, plane->id);
+		return false;
+	}
+
+	// If we have more (visible, non-composition) layers than planes then
+	// we MUST do composition.  Any branch where the PRIMARY plane is
+	// allocated to a non-composition layer will produce no valid
+	// allocations and so can be pruned early.
+	if (plane->type == DRM_PLANE_TYPE_PRIMARY &&
+		layer != layer->output->composition_layer
+		&& must_do_composition(output, result)) {
+		liftoff_log(LIFTOFF_DEBUG,
+				"%s Layer %p -> plane %"PRIu32": "
+				"We'll need to do composition, so refusing to "
+				"allocate the primary plane to a "
+				"non-composition layer.",
+				step->log_prefix, (void *)layer, plane->id);
 		return false;
 	}
 
@@ -612,7 +664,7 @@ output_choose_layers(struct liftoff_output *output, struct alloc_result *result,
 		if (!layer_is_visible(layer)) {
 			continue;
 		}
-		if (!check_layer_plane_compatible(step, layer, plane)) {
+		if (!check_layer_plane_compatible(step, layer, plane, result)) {
 			continue;
 		}
 

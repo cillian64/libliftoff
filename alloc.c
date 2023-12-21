@@ -475,7 +475,15 @@ calculate_best_possible_score(struct liftoff_output *output,
 
 	/* Now calculate the best possible score overall, ignoring our
 	 * current position. */
+
 	total_planes = result->planes_len;
+	if (step->composited) {
+		// If we do composition then one plane is always used up for the
+		// composition layer which doesn't contribute to score.
+		total_planes--;
+	}
+
+
 	total_layers = 0;
 	liftoff_list_for_each(layer, &output->layers, link) {
 		if (!layer_is_visible(layer)) {
